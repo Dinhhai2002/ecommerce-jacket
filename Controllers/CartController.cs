@@ -1,170 +1,165 @@
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using webecommerce.Models;
 using webecommerce.Models.Requests;
 using webecommerce.Models.Responses;
 using webecommerce.Services;
-using webecommerce.Common.Utils;
-using System.Collections.Generic;
-using System;
-using System.Linq;
 
 namespace webecommerce.Controllers
 {
-    [Route("api/v1/[controller]")]
     [ApiController]
-    public class CartController : BaseController
+    [Route("api/[controller]")]
+    [Authorize]
+    public class CartController : ControllerBase
     {
         private readonly ICartService _cartService;
-        private readonly ICartDetailService _cartDetailService;
-        private readonly IProductDetailService _productDetailService;
+        private readonly IProductService _productService;
 
         public CartController(
             ICartService cartService,
-            ICartDetailService cartDetailService,
-            IProductDetailService productDetailService)
+            IProductService productService)
         {
             _cartService = cartService;
-            _cartDetailService = cartDetailService;
-            _productDetailService = productDetailService;
+            _productService = productService;
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll(
-            [FromQuery] int userId = -1,
-            [FromQuery] string keySearch = "",
-            [FromQuery] int status = -1,
-            [FromQuery] int page = 1,
-            [FromQuery] int limit = 10)
+        public async Task<ActionResult<CartResponse>> GetMyCart()
         {
-            try
-            {
-                var user = await GetCurrentUser();
-                var pagination = new Pagination(limit, (page - 1) * limit);
-                var result = await _cartService.GetList(user.Id, keySearch, status, pagination);
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
 
-                var listData = new BaseListDataResponse<CartResponse>
-                {
-                    List = result.Data.Select(c => new CartResponse { Cart = c }).ToList(),
-                    TotalRecord = result.TotalRecord
-                };
+            var cart = await _cartService.GetCartAsync(userId);
+            if (cart == null)
+                return NotFound();
 
-                return OkWithData(listData);
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            return Ok((CartResponse)cart);
         }
 
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(int id)
+        [HttpPost("items")]
+        public async Task<ActionResult<CartResponse>> AddToCart([FromBody] AddToCartRequest request)
         {
-            try
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
+
+            // Check if product exists and is available
+            var product = await _productService.GetByIdAsync(request.ProductId);
+            if (product == null)
+                return BadRequest("Product not found");
+
+            if (product.Status != 1)
+                return BadRequest("Product is not available");
+
+            // Get or create cart
+            var cart = await _cartService.GetCartAsync(userId);
+            if (cart == null)
             {
-                var cart = await _cartService.GetById(id);
-                if (cart == null)
-                    return BadRequestWithMessage("Cart not found");
-
-                var pagination = new Pagination(20, 0);
-                var cartDetailResult = await _cartDetailService.GetList(id, -1, "", 1, pagination);
-                var cartDetails = cartDetailResult.Data;
-
-                var productDetailIds = cartDetails.Select(cd => cd.ProductDetailId).ToList();
-                var productDetails = await _productDetailService.GetByIds(productDetailIds);
-                var productDetailMap = productDetails.ToDictionary(pd => pd.Id);
-
-                var cartDetailResponses = cartDetails.Select(cd =>
-                {
-                    var productDetail = productDetailMap.GetValueOrDefault(cd.ProductDetailId);
-                    return new CartDetailResponse
-                    {
-                        CartDetail = cd,
-                        ProductDetail = productDetail != null ? new ProductDetailResponse { ProductDetail = productDetail } : null
-                    };
-                }).ToList();
-
-                var response = new CartResponse
-                {
-                    Cart = cart,
-                    CartDetails = cartDetailResponses
-                };
-
-                return OkWithData(response);
+                cart = new Cart { UserId = userId };
+                cart = await _cartService.CreateAsync(cart);
             }
-            catch (Exception ex)
+
+            // Add item to cart
+            var cartDetail = new CartDetail
             {
-                return ServerErrorWithMessage(ex.Message);
-            }
+                CartId = cart.Id,
+                ProductId = request.ProductId,
+                Quantity = request.Quantity
+            };
+
+            await _cartService.AddItemAsync(cartDetail);
+
+            // Return updated cart
+            cart = await _cartService.GetCartAsync(userId);
+            return Ok((CartResponse)cart);
         }
 
-        [Authorize(Roles = "ADMIN")]
-        [HttpPost("{id}/change-status")]
-        public async Task<IActionResult> ChangeStatus(int id)
+        [HttpPut("items/{productId}")]
+        public async Task<ActionResult<CartResponse>> UpdateCartItem(
+            int productId,
+            [FromBody] UpdateCartItemRequest request)
         {
-            try
-            {
-                var cart = await _cartService.GetById(id);
-                if (cart == null)
-                    return BadRequestWithMessage("Cart not found");
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
 
-                cart.Status = cart.Status == 1 ? 0 : 1;
-                await _cartService.Update(cart);
+            // Check if product exists
+            var product = await _productService.GetByIdAsync(productId);
+            if (product == null)
+                return BadRequest("Product not found");
 
-                return OkWithData(new CartResponse { Cart = cart });
-            }
-            catch (Exception ex)
+            // Get cart
+            var cart = await _cartService.GetCartAsync(userId);
+            if (cart == null)
+                return NotFound();
+
+            // Update item quantity
+            var cartDetail = cart.CartDetails.FirstOrDefault(cd => cd.ProductId == productId);
+            if (cartDetail == null)
+                return BadRequest("Product not found in cart");
+
+            if (request.Quantity <= 0)
             {
-                return ServerErrorWithMessage(ex.Message);
+                // Remove item if quantity is 0 or negative
+                await _cartService.RemoveItemAsync(cart.Id, productId);
             }
+            else
+            {
+                cartDetail.Quantity = request.Quantity;
+                await _cartService.UpdateItemAsync(cartDetail);
+            }
+
+            // Return updated cart
+            cart = await _cartService.GetCartAsync(userId);
+            return Ok((CartResponse)cart);
         }
 
-        [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CRUDCartRequest request)
+        [HttpDelete("items/{productId}")]
+        public async Task<ActionResult<CartResponse>> RemoveFromCart(int productId)
         {
-            try
-            {
-                var user = await GetCurrentUser();
-                var pagination = new Pagination(20, 0);
-                var existingCarts = await _cartService.GetList(user.Id, "", 1, pagination);
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
 
-                if (existingCarts.Data.Any())
-                    return BadRequestWithMessage("Cart already exists");
+            // Get cart
+            var cart = await _cartService.GetCartAsync(userId);
+            if (cart == null)
+                return NotFound();
 
-                var cart = new Cart
-                {
-                    UserId = user.Id,
-                    Status = 1
-                };
+            // Remove item
+            await _cartService.RemoveItemAsync(cart.Id, productId);
 
-                await _cartService.Create(cart);
-                return OkWithData(new CartResponse { Cart = cart });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            // Return updated cart
+            cart = await _cartService.GetCartAsync(userId);
+            return Ok((CartResponse)cart);
         }
 
-        [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] CRUDCartRequest request)
+        [HttpDelete]
+        public async Task<ActionResult> ClearCart()
         {
-            try
-            {
-                var user = await GetCurrentUser();
-                var cart = await _cartService.GetById(id);
-                if (cart == null)
-                    return BadRequestWithMessage("Cart not found");
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
 
-                cart.UserId = user.Id;
-                await _cartService.Update(cart);
+            await _cartService.ClearCartAsync(userId);
+            return NoContent();
+        }
 
-                return OkWithData(new CartResponse { Cart = cart });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+        [HttpGet("count")]
+        public async Task<ActionResult<CartCountResponse>> GetCartItemCount()
+        {
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
+
+            var count = await _cartService.GetCartItemCountAsync(userId);
+            return Ok(new CartCountResponse { Count = count });
+        }
+
+        [HttpGet("total")]
+        public async Task<ActionResult<CartTotalResponse>> GetCartTotal()
+        {
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
+
+            var total = await _cartService.GetCartTotalAsync(userId);
+            return Ok(new CartTotalResponse { Total = total });
         }
     }
 } 

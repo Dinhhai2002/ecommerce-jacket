@@ -1,12 +1,16 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using webecommerce.Models;
+using webecommerce.Common.Utils;
 
 namespace webecommerce.Data.Repository
 {
     public interface ISizeRepository : IGenericRepository<Size>
     {
-        Size FindByCode(string code);
-        Size FindByName(string name);
-        List<Size> FindByStatus(int status);
-        List<Size> FindAllActive();
+        Task<StoreProcedureListResult<Size>> SpGListSize(string keySearch, int status, Pagination pagination);
+        Task<Size> FindByName(string name);
+        Task<Size> FindByCode(string code);
+        Task<List<Size>> FindByStatus(int status);
+        Task<List<Size>> FindAllActive();
     }
 } 

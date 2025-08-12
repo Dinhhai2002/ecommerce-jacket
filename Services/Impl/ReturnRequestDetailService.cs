@@ -1,6 +1,10 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using webecommerce.Models;
 using webecommerce.Data.Repository;
+using webecommerce.Common.Utils;
 
 namespace webecommerce.Services.Impl
 {
@@ -13,49 +17,46 @@ namespace webecommerce.Services.Impl
             _returnRequestDetailRepository = returnRequestDetailRepository;
         }
 
-        public void Create(ReturnRequestDetail returnRequestDetail)
+        public async Task<StoreProcedureListResult<ReturnRequestDetail>> GetList(int returnRequestId, string keySearch, int status, Pagination pagination)
         {
-            _returnRequestDetailRepository.Create(returnRequestDetail);
+            return await _returnRequestDetailRepository.SpGListReturnRequestDetail(returnRequestId, keySearch, status, pagination);
         }
 
-        public ReturnRequestDetail FindOne(int id)
+        public async Task<ReturnRequestDetail> GetById(int id)
         {
-            return _returnRequestDetailRepository.FindOne(id);
+            return await _returnRequestDetailRepository.FindOne(id);
         }
 
-        public void Update(ReturnRequestDetail returnRequestDetail)
+        public async Task<ReturnRequestDetail> Create(ReturnRequestDetail returnRequestDetail)
         {
-            _returnRequestDetailRepository.Update(returnRequestDetail);
+            await _returnRequestDetailRepository.Create(returnRequestDetail);
+            return returnRequestDetail;
         }
 
-        public List<ReturnRequestDetail> GetAll()
+        public async Task<ReturnRequestDetail> Update(ReturnRequestDetail returnRequestDetail)
         {
-            return _returnRequestDetailRepository.GetAll();
+            await _returnRequestDetailRepository.Update(returnRequestDetail);
+            return returnRequestDetail;
         }
 
-        public List<ReturnRequestDetail> FindByReturnRequestId(int returnRequestId)
+        public async Task<List<ReturnRequestDetail>> GetAll()
         {
-            return _returnRequestDetailRepository.FindByReturnRequestId(returnRequestId);
+            return await _returnRequestDetailRepository.GetAll().ToListAsync();
         }
 
-        public List<ReturnRequestDetail> FindByOrderDetailId(int orderDetailId)
+        public async Task<List<ReturnRequestDetail>> GetByStatus(int status)
         {
-            return _returnRequestDetailRepository.FindByOrderDetailId(orderDetailId);
+            return await _returnRequestDetailRepository.FindByCondition(r => r.Status == status).ToListAsync();
         }
 
-        public List<ReturnRequestDetail> FindByProductDetailId(int productDetailId)
+        public async Task<List<ReturnRequestDetail>> GetByReturnRequestId(int returnRequestId)
         {
-            return _returnRequestDetailRepository.FindByProductDetailId(productDetailId);
+            return await _returnRequestDetailRepository.FindByCondition(r => r.ReturnRequestId == returnRequestId).ToListAsync();
         }
 
-        public List<ReturnRequestDetail> FindByStatus(int status)
+        public async Task<List<ReturnRequestDetail>> GetByOrderDetailId(int orderDetailId)
         {
-            return _returnRequestDetailRepository.FindByStatus(status);
-        }
-
-        public List<ReturnRequestDetail> FindAllActive()
-        {
-            return _returnRequestDetailRepository.FindAllActive();
+            return await _returnRequestDetailRepository.FindByCondition(r => r.OrderDetailId == orderDetailId).ToListAsync();
         }
     }
 } 

@@ -1,3 +1,4 @@
+using System;
 using Newtonsoft.Json;
 
 namespace webecommerce.Models.Responses
@@ -6,20 +7,21 @@ namespace webecommerce.Models.Responses
     {
         [JsonProperty("id")]
         public int Id { get; set; }
+
         [JsonProperty("name")]
         public string Name { get; set; }
-        [JsonProperty("code")]
-        public string Code { get; set; }
-        [JsonProperty("status")]
-        public int Status { get; set; }
 
-        public SizeResponse() {}
-        public SizeResponse(webecommerce.Data.Size size)
+        [JsonProperty("description")]
+        public string Description { get; set; }
+
+        public static implicit operator SizeResponse(Size size)
         {
-            Id = size.Id;
-            Name = size.Name;
-            Code = size.Code;
-            Status = size.Status;
+            return new SizeResponse
+            {
+                Id = size.Id,
+                Name = size.Name,
+                Description = size.Description
+            };
         }
     }
 } 

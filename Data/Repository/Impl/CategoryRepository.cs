@@ -1,8 +1,7 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using webecommerce.Common.Enums;
 using webecommerce.Common.Utils;
 using webecommerce.Models;
 
@@ -10,69 +9,118 @@ namespace webecommerce.Data.Repository.Impl
 {
     public class CategoryRepository : GenericRepository<Category>, ICategoryRepository
     {
-        private readonly AppDbContext _context;
-
         public CategoryRepository(AppDbContext context) : base(context)
         {
-            _context = context;
         }
 
-        public List<Category> FindByIds(List<int> ids)
+        public async Task<Category> GetByNameAsync(string name)
         {
-            return _dbSet.Where(c => ids.Contains(c.Id)).ToList();
+            return await _context.Categories
+                .Include(c => c.Parent)
+                .Include(c => c.Children)
+                .Include(c => c.Images)
+                .FirstOrDefaultAsync(c => c.Name == name);
         }
 
-        public Category FindByName(string name)
+        public async Task<bool> CheckNameExistsAsync(string name)
         {
-            return _dbSet.FirstOrDefault(c => c.Name == name);
+            return await _context.Categories.AnyAsync(c => c.Name == name);
         }
 
-        public StoreProcedureListResult<Category> SpGListCategory(int parentId, string keySearch, int status, Pagination pagination)
+        public async Task<StoreProcedureListResult<Category>> GetListWithProductsAsync(string searchKey = "", int status = 1, Pagination pagination = null)
         {
-            try
+            var query = _context.Categories
+                .Include(c => c.Parent)
+                .Include(c => c.Children)
+                .Include(c => c.Products)
+                .Include(c => c.Images)
+                .Where(c => c.Status == status);
+
+            if (!string.IsNullOrEmpty(searchKey))
             {
-                var totalRecordParam = new Microsoft.Data.SqlClient.SqlParameter("@total_record", System.Data.SqlDbType.Int)
-                {
-                    Direction = System.Data.ParameterDirection.Output
-                };
-
-                var statusCodeParam = new Microsoft.Data.SqlClient.SqlParameter("@status_code", System.Data.SqlDbType.Int)
-                {
-                    Direction = System.Data.ParameterDirection.Output
-                };
-
-                var messageErrorParam = new Microsoft.Data.SqlClient.SqlParameter("@message_error", System.Data.SqlDbType.NVarChar, 255)
-                {
-                    Direction = System.Data.ParameterDirection.Output
-                };
-
-                var result = _context.Categories.FromSqlRaw(
-                    "EXEC sp_g_list_category @parentId, @keySearch, @status, @_limit, @_offset, @total_record OUTPUT, @status_code OUTPUT, @message_error OUTPUT",
-                    new Microsoft.Data.SqlClient.SqlParameter("@parentId", parentId),
-                    new Microsoft.Data.SqlClient.SqlParameter("@keySearch", keySearch ?? (object)DBNull.Value),
-                    new Microsoft.Data.SqlClient.SqlParameter("@status", status),
-                    new Microsoft.Data.SqlClient.SqlParameter("@_limit", pagination.Limit),
-                    new Microsoft.Data.SqlClient.SqlParameter("@_offset", pagination.Offset),
-                    totalRecordParam,
-                    statusCodeParam,
-                    messageErrorParam
-                ).ToList();
-
-                var statusCode = (int)statusCodeParam.Value;
-                var messageError = messageErrorParam.Value.ToString();
-                var totalRecord = (int)totalRecordParam.Value;
-
-                if (statusCode == (int)StoreProcedureStatusCodeEnum.INPUT_INVALID)
-                {
-                    throw new Exception(messageError);
-                }
-
-                return new StoreProcedureListResult<Category>(statusCode, messageError, totalRecord, result);
+                query = query.Where(c => c.Name.Contains(searchKey) || 
+                                       c.Description.Contains(searchKey));
             }
-            catch (Exception ex)
+
+            var totalRecords = await query.CountAsync();
+
+            if (pagination != null)
             {
-                throw new Exception($"Error executing sp_g_list_category: {ex.Message}");
+                query = query.Skip((pagination.PageNumber - 1) * pagination.PageSize)
+                           .Take(pagination.PageSize);
             }
+
+            var items = await query.ToListAsync();
+
+            return new StoreProcedureListResult<Category>
+            {
+                Items = items,
+                TotalRecords = totalRecords,
+                StatusCode = 200,
+                Message = "Success"
+            };
+        }
+
+        public async Task<IEnumerable<Category>> GetByIdsWithProductsAsync(IEnumerable<int> ids)
+        {
+            return await _context.Categories
+                .Include(c => c.Parent)
+                .Include(c => c.Children)
+                .Include(c => c.Products)
+                .Include(c => c.Images)
+                .Where(c => ids.Contains(c.Id))
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Category>> GetRootCategoriesAsync()
+        {
+            return await _context.Categories
+                .Include(c => c.Children)
+                .Include(c => c.Images)
+                .Where(c => c.ParentId == null && c.Status == 1)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Category>> GetChildrenAsync(int parentId)
+        {
+            return await _context.Categories
+                .Include(c => c.Children)
+                .Include(c => c.Images)
+                .Where(c => c.ParentId == parentId && c.Status == 1)
+                .ToListAsync();
+        }
+
+        public override async Task<StoreProcedureListResult<Category>> GetListAsync(string searchKey = "", int status = 1, Pagination pagination = null)
+        {
+            var query = _context.Categories
+                .Include(c => c.Parent)
+                .Include(c => c.Children)
+                .Include(c => c.Images)
+                .Where(c => c.Status == status);
+
+            if (!string.IsNullOrEmpty(searchKey))
+            {
+                query = query.Where(c => c.Name.Contains(searchKey) || 
+                                       c.Description.Contains(searchKey));
+            }
+
+            var totalRecords = await query.CountAsync();
+
+            if (pagination != null)
+            {
+                query = query.Skip((pagination.PageNumber - 1) * pagination.PageSize)
+                           .Take(pagination.PageSize);
+            }
+
+            var items = await query.ToListAsync();
+
+            return new StoreProcedureListResult<Category>
+            {
+                Items = items,
+                TotalRecords = totalRecords,
+                StatusCode = 200,
+                Message = "Success"
+            };
         }
     }
 } 

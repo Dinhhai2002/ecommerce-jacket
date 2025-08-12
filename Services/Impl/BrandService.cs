@@ -1,6 +1,8 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using webecommerce.Common.Utils;
 using webecommerce.Data.Repository;
+using webecommerce.Models;
 
 namespace webecommerce.Services.Impl
 {
@@ -13,39 +15,59 @@ namespace webecommerce.Services.Impl
             _brandRepository = brandRepository;
         }
 
-        public void Create(Brand brand)
+        public async Task<StoreProcedureListResult<Brand>> GetListAsync(string searchKey = "", int status = 1, Pagination pagination = null)
         {
-            _brandRepository.Create(brand);
+            return await _brandRepository.GetListAsync(searchKey, status, pagination);
         }
 
-        public Brand FindOne(int id)
+        public async Task<Brand> GetByIdAsync(int id)
         {
-            return _brandRepository.FindOne(id);
+            return await _brandRepository.GetByIdAsync(id);
         }
 
-        public void Update(Brand brand)
+        public async Task<Brand> CreateAsync(Brand brand)
         {
-            _brandRepository.Update(brand);
+            return await _brandRepository.AddAsync(brand);
         }
 
-        public List<Brand> GetAll()
+        public async Task<Brand> UpdateAsync(Brand brand)
         {
-            return _brandRepository.GetAll();
+            return await _brandRepository.UpdateAsync(brand);
         }
 
-        public Brand FindByName(string name)
+        public async Task<bool> DeleteAsync(int id)
         {
-            return _brandRepository.FindByName(name);
+            return await _brandRepository.DeleteAsync(id);
         }
 
-        public List<Brand> FindByStatus(int status)
+        public async Task<IEnumerable<Brand>> GetAllAsync()
         {
-            return _brandRepository.FindByStatus(status);
+            return await _brandRepository.GetAllAsync();
         }
 
-        public List<Brand> FindAllActive()
+        public async Task<IEnumerable<Brand>> GetByStatusAsync(int status)
         {
-            return _brandRepository.FindAllActive();
+            return await _brandRepository.FindAsync(b => b.Status == status);
+        }
+
+        public async Task<Brand> GetByNameAsync(string name)
+        {
+            return await _brandRepository.GetByNameAsync(name);
+        }
+
+        public async Task<bool> CheckNameExistsAsync(string name)
+        {
+            return await _brandRepository.CheckNameExistsAsync(name);
+        }
+
+        public async Task<StoreProcedureListResult<Brand>> GetListWithProductsAsync(string searchKey = "", int status = 1, Pagination pagination = null)
+        {
+            return await _brandRepository.GetListWithProductsAsync(searchKey, status, pagination);
+        }
+
+        public async Task<IEnumerable<Brand>> GetByIdsWithProductsAsync(IEnumerable<int> ids)
+        {
+            return await _brandRepository.GetByIdsWithProductsAsync(ids);
         }
     }
 } 

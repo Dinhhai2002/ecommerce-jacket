@@ -1,8 +1,7 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using webecommerce.Common.Enums;
 using webecommerce.Common.Utils;
 using webecommerce.Models;
 
@@ -10,68 +9,92 @@ namespace webecommerce.Data.Repository.Impl
 {
     public class BrandRepository : GenericRepository<Brand>, IBrandRepository
     {
-        private readonly AppDbContext _context;
-
         public BrandRepository(AppDbContext context) : base(context)
         {
-            _context = context;
         }
 
-        public List<Brand> FindByIds(List<int> ids)
+        public async Task<Brand> GetByNameAsync(string name)
         {
-            return _dbSet.Where(b => ids.Contains(b.Id)).ToList();
+            return await _context.Brands
+                .Include(b => b.Images)
+                .FirstOrDefaultAsync(b => b.Name == name);
         }
 
-        public Brand FindByName(string name)
+        public async Task<bool> CheckNameExistsAsync(string name)
         {
-            return _dbSet.FirstOrDefault(b => b.Name == name);
+            return await _context.Brands.AnyAsync(b => b.Name == name);
         }
 
-        public StoreProcedureListResult<Brand> SpGListBrand(string keySearch, int status, Pagination pagination)
+        public async Task<StoreProcedureListResult<Brand>> GetListWithProductsAsync(string searchKey = "", int status = 1, Pagination pagination = null)
         {
-            try
+            var query = _context.Brands
+                .Include(b => b.Products)
+                .Include(b => b.Images)
+                .Where(b => b.Status == status);
+
+            if (!string.IsNullOrEmpty(searchKey))
             {
-                var totalRecordParam = new Microsoft.Data.SqlClient.SqlParameter("@total_record", System.Data.SqlDbType.Int)
-                {
-                    Direction = System.Data.ParameterDirection.Output
-                };
-
-                var statusCodeParam = new Microsoft.Data.SqlClient.SqlParameter("@status_code", System.Data.SqlDbType.Int)
-                {
-                    Direction = System.Data.ParameterDirection.Output
-                };
-
-                var messageErrorParam = new Microsoft.Data.SqlClient.SqlParameter("@message_error", System.Data.SqlDbType.NVarChar, 255)
-                {
-                    Direction = System.Data.ParameterDirection.Output
-                };
-
-                var result = _context.Brands.FromSqlRaw(
-                    "EXEC sp_g_list_brand @keySearch, @status, @_limit, @_offset, @total_record OUTPUT, @status_code OUTPUT, @message_error OUTPUT",
-                    new Microsoft.Data.SqlClient.SqlParameter("@keySearch", keySearch ?? (object)DBNull.Value),
-                    new Microsoft.Data.SqlClient.SqlParameter("@status", status),
-                    new Microsoft.Data.SqlClient.SqlParameter("@_limit", pagination.Limit),
-                    new Microsoft.Data.SqlClient.SqlParameter("@_offset", pagination.Offset),
-                    totalRecordParam,
-                    statusCodeParam,
-                    messageErrorParam
-                ).ToList();
-
-                var statusCode = (int)statusCodeParam.Value;
-                var messageError = messageErrorParam.Value.ToString();
-                var totalRecord = (int)totalRecordParam.Value;
-
-                if (statusCode == (int)StoreProcedureStatusCodeEnum.INPUT_INVALID)
-                {
-                    throw new Exception(messageError);
-                }
-
-                return new StoreProcedureListResult<Brand>(statusCode, messageError, totalRecord, result);
+                query = query.Where(b => b.Name.Contains(searchKey) || 
+                                       b.Description.Contains(searchKey));
             }
-            catch (Exception ex)
+
+            var totalRecords = await query.CountAsync();
+
+            if (pagination != null)
             {
-                throw new Exception($"Error executing sp_g_list_brand: {ex.Message}");
+                query = query.Skip((pagination.PageNumber - 1) * pagination.PageSize)
+                           .Take(pagination.PageSize);
             }
+
+            var items = await query.ToListAsync();
+
+            return new StoreProcedureListResult<Brand>
+            {
+                Items = items,
+                TotalRecords = totalRecords,
+                StatusCode = 200,
+                Message = "Success"
+            };
+        }
+
+        public async Task<IEnumerable<Brand>> GetByIdsWithProductsAsync(IEnumerable<int> ids)
+        {
+            return await _context.Brands
+                .Include(b => b.Products)
+                .Include(b => b.Images)
+                .Where(b => ids.Contains(b.Id))
+                .ToListAsync();
+        }
+
+        public override async Task<StoreProcedureListResult<Brand>> GetListAsync(string searchKey = "", int status = 1, Pagination pagination = null)
+        {
+            var query = _context.Brands
+                .Include(b => b.Images)
+                .Where(b => b.Status == status);
+
+            if (!string.IsNullOrEmpty(searchKey))
+            {
+                query = query.Where(b => b.Name.Contains(searchKey) || 
+                                       b.Description.Contains(searchKey));
+            }
+
+            var totalRecords = await query.CountAsync();
+
+            if (pagination != null)
+            {
+                query = query.Skip((pagination.PageNumber - 1) * pagination.PageSize)
+                           .Take(pagination.PageSize);
+            }
+
+            var items = await query.ToListAsync();
+
+            return new StoreProcedureListResult<Brand>
+            {
+                Items = items,
+                TotalRecords = totalRecords,
+                StatusCode = 200,
+                Message = "Success"
+            };
         }
     }
 } 

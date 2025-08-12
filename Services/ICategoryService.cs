@@ -1,19 +1,24 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using webecommerce.Common.Utils;
+using webecommerce.Models;
 
 namespace webecommerce.Services
 {
     public interface ICategoryService
     {
-        void Create(Category category);
-        Category FindOne(int id);
-        void Update(Category category);
-        List<Category> GetAll();
-        Category FindByName(string name);
-        List<Category> FindByParentId(int parentId);
-        List<Category> FindByStatus(int status);
-        List<Category> FindAllActive();
-        List<Category> FindAllParent();
-        List<Category> FindAllChild(int parentId);
+        Task<StoreProcedureListResult<Category>> GetListAsync(string searchKey = "", int status = 1, Pagination pagination = null);
+        Task<Category> GetByIdAsync(int id);
+        Task<Category> CreateAsync(Category category);
+        Task<Category> UpdateAsync(Category category);
+        Task<bool> DeleteAsync(int id);
+        Task<IEnumerable<Category>> GetAllAsync();
+        Task<IEnumerable<Category>> GetByStatusAsync(int status);
+        Task<Category> GetByNameAsync(string name);
+        Task<bool> CheckNameExistsAsync(string name);
+        Task<StoreProcedureListResult<Category>> GetListWithProductsAsync(string searchKey = "", int status = 1, Pagination pagination = null);
+        Task<IEnumerable<Category>> GetByIdsWithProductsAsync(IEnumerable<int> ids);
+        Task<IEnumerable<Category>> GetRootCategoriesAsync();
+        Task<IEnumerable<Category>> GetChildrenAsync(int parentId);
     }
 } 

@@ -1,6 +1,8 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using webecommerce.Models;
 using webecommerce.Data.Repository;
+using webecommerce.Common.Utils;
 
 namespace webecommerce.Services.Impl
 {
@@ -13,39 +15,56 @@ namespace webecommerce.Services.Impl
             _imageRepository = imageRepository;
         }
 
-        public void Create(Image image)
+        public async Task<StoreProcedureListResult<Image>> GetList(int? productId, int? bannerId, int? returnRequestId, int? reviewId, string keySearch, int status, Pagination pagination)
         {
-            _imageRepository.Create(image);
+            return await _imageRepository.SpGListImage(productId, bannerId, returnRequestId, reviewId, keySearch, status, pagination);
         }
 
-        public Image FindOne(int id)
+        public async Task<Image> GetById(int id)
         {
-            return _imageRepository.FindOne(id);
+            return await _imageRepository.FindOne(id);
         }
 
-        public void Update(Image image)
+        public async Task<Image> Create(Image image)
         {
-            _imageRepository.Update(image);
+            await _imageRepository.Create(image);
+            return image;
         }
 
-        public List<Image> GetAll()
+        public async Task<Image> Update(Image image)
         {
-            return _imageRepository.GetAll();
+            await _imageRepository.Update(image);
+            return image;
         }
 
-        public List<Image> FindByProductId(int productId)
+        public async Task<List<Image>> GetAll()
         {
-            return _imageRepository.FindByProductId(productId);
+            return await _imageRepository.GetAll().ToListAsync();
         }
 
-        public List<Image> FindByStatus(int status)
+        public async Task<List<Image>> GetByStatus(int status)
         {
-            return _imageRepository.FindByStatus(status);
+            return await _imageRepository.FindByCondition(i => i.Status == status).ToListAsync();
         }
 
-        public List<Image> FindAllActive()
+        public async Task<Image> GetByProductId(int productId)
         {
-            return _imageRepository.FindAllActive();
+            return await _imageRepository.FindByProductId(productId);
+        }
+
+        public async Task<Image> GetByBannerId(int bannerId)
+        {
+            return await _imageRepository.FindByBannerId(bannerId);
+        }
+
+        public async Task<Image> GetByReturnRequestId(int returnRequestId)
+        {
+            return await _imageRepository.FindByReturnRequestId(returnRequestId);
+        }
+
+        public async Task<Image> GetByReviewId(int reviewId)
+        {
+            return await _imageRepository.FindByReviewId(reviewId);
         }
     }
 } 

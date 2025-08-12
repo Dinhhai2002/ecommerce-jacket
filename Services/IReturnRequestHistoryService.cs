@@ -1,16 +1,19 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using webecommerce.Models;
+using webecommerce.Common.Utils;
 
 namespace webecommerce.Services
 {
     public interface IReturnRequestHistoryService
     {
-        void Create(ReturnRequestHistory returnRequestHistory);
-        ReturnRequestHistory FindOne(int id);
-        void Update(ReturnRequestHistory returnRequestHistory);
-        List<ReturnRequestHistory> GetAll();
-        List<ReturnRequestHistory> FindByReturnRequestId(int returnRequestId);
-        List<ReturnRequestHistory> FindByStatus(int status);
-        List<ReturnRequestHistory> FindAllActive();
+        Task<StoreProcedureListResult<ReturnRequestHistory>> GetList(int returnRequestId, string keySearch, int status, Pagination pagination);
+        Task<ReturnRequestHistory> GetById(int id);
+        Task<ReturnRequestHistory> Create(ReturnRequestHistory returnRequestHistory);
+        Task<ReturnRequestHistory> Update(ReturnRequestHistory returnRequestHistory);
+        Task<List<ReturnRequestHistory>> GetAll();
+        Task<List<ReturnRequestHistory>> GetByStatus(int status);
+        Task<List<ReturnRequestHistory>> GetByReturnRequestId(int returnRequestId);
+        Task<List<ReturnRequestHistory>> FindAllActive();
     }
 } 

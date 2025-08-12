@@ -1,14 +1,20 @@
-namespace webecommerce.Models.Response
+using System;
+using Newtonsoft.Json;
+
+namespace webecommerce.Models.Responses
 {
-    public class BaseResponse<T>
+    public abstract class BaseResponse
     {
-        public int Status { get; set; } = 200;
-        public string MessageError { get; set; }
-        public T Data { get; set; }
-        public BaseResponse() { }
-        public BaseResponse(T data)
-        {
-            Data = data;
-        }
+        [JsonProperty("id")]
+        public int Id { get; set; }
+
+        [JsonProperty("createdAt")]
+        public DateTime CreatedAt { get; set; }
+
+        [JsonProperty("updatedAt")]
+        public DateTime UpdatedAt { get; set; }
+
+        [JsonProperty("status")]
+        public int Status { get; set; }
     }
 } 

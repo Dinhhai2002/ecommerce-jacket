@@ -1,191 +1,192 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using webecommerce.Common.Utils;
 using webecommerce.Models;
 using webecommerce.Models.Requests;
 using webecommerce.Models.Responses;
 using webecommerce.Services;
-using webecommerce.Common.Utils;
-using System.Collections.Generic;
-using System;
 
 namespace webecommerce.Controllers
 {
-    [Route("api/v1/[controller]")]
     [ApiController]
-    public class CategoryController : BaseController
+    [Route("api/[controller]")]
+    public class CategoryController : ControllerBase
     {
         private readonly ICategoryService _categoryService;
-        private readonly IFirebaseImageService _firebaseImageService;
 
-        public CategoryController(
-            ICategoryService categoryService,
-            IFirebaseImageService firebaseImageService)
+        public CategoryController(ICategoryService categoryService)
         {
             _categoryService = categoryService;
-            _firebaseImageService = firebaseImageService;
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll(
-            [FromQuery] int parentId = -1,
-            [FromQuery] string keySearch = "",
-            [FromQuery] int status = -1,
-            [FromQuery] int page = 1,
-            [FromQuery] int limit = 10)
+        public async Task<ActionResult<StoreProcedureListResult<CategoryResponse>>> GetList(
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
         {
-            try
-            {
-                var pagination = new Pagination(limit, (page - 1) * limit);
-                var result = await _categoryService.GetList(parentId, keySearch, status, pagination);
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _categoryService.GetListAsync(searchKey, status, pagination);
 
-                var listData = new BaseListDataResponse<CategoryResponse>
-                {
-                    List = result.Data.Select(c => new CategoryResponse { Category = c }).ToList(),
-                    TotalRecord = result.TotalRecord
-                };
-
-                return OkWithData(listData);
-            }
-            catch (Exception ex)
+            return Ok(new StoreProcedureListResult<CategoryResponse>
             {
-                return ServerErrorWithMessage(ex.Message);
-            }
+                Items = result.Items.Select(c => (CategoryResponse)c).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
         }
 
-        [HttpGet("all")]
-        public async Task<IActionResult> GetAllCategories()
+        [HttpGet("with-products")]
+        public async Task<ActionResult<StoreProcedureListResult<CategoryResponse>>> GetListWithProducts(
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
         {
-            try
-            {
-                var pagination = new Pagination(int.MaxValue, 0);
-                var result = await _categoryService.GetList(-1, "", 1, pagination);
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _categoryService.GetListWithProductsAsync(searchKey, status, pagination);
 
-                var categoryResponses = result.Data.Select(c => new CategoryResponse { Category = c }).ToList();
-                return OkWithData(categoryResponses);
-            }
-            catch (Exception ex)
+            return Ok(new StoreProcedureListResult<CategoryResponse>
             {
-                return ServerErrorWithMessage(ex.Message);
-            }
+                Items = result.Items.Select(c => (CategoryResponse)c).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
+        }
+
+        [HttpGet("root")]
+        public async Task<ActionResult<IEnumerable<CategoryResponse>>> GetRootCategories()
+        {
+            var categories = await _categoryService.GetRootCategoriesAsync();
+            return Ok(categories.Select(c => (CategoryResponse)c));
+        }
+
+        [HttpGet("children/{parentId}")]
+        public async Task<ActionResult<IEnumerable<CategoryResponse>>> GetChildren(int parentId)
+        {
+            var categories = await _categoryService.GetChildrenAsync(parentId);
+            return Ok(categories.Select(c => (CategoryResponse)c));
         }
 
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(int id)
+        public async Task<ActionResult<CategoryResponse>> GetById(int id)
         {
-            try
-            {
-                var category = await _categoryService.GetById(id);
-                if (category == null)
-                    return BadRequestWithMessage("Category not found");
+            var category = await _categoryService.GetByIdAsync(id);
+            if (category == null)
+                return NotFound();
 
-                return OkWithData(new CategoryResponse { Category = category });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            return Ok((CategoryResponse)category);
         }
 
-        [Authorize(Roles = "ADMIN")]
-        [HttpPost("{id}/change-status")]
-        public async Task<IActionResult> ChangeStatus(int id)
-        {
-            try
-            {
-                var category = await _categoryService.GetById(id);
-                if (category == null)
-                    return BadRequestWithMessage("Category not found");
-
-                category.Status = category.Status == 1 ? 0 : 1;
-                await _categoryService.Update(category);
-
-                return OkWithData(new CategoryResponse { Category = category });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
-        }
-
-        [Authorize(Roles = "ADMIN")]
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CRUDCategoryRequest request)
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<CategoryResponse>> Create([FromBody] CreateCategoryRequest request)
         {
-            try
-            {
-                var existingCategory = await _categoryService.GetByName(request.Name);
-                if (existingCategory != null)
-                    return BadRequestWithMessage("Category already exists");
+            if (await _categoryService.CheckNameExistsAsync(request.Name))
+                return BadRequest("Category name already exists");
 
-                var category = new Category
-                {
-                    Name = request.Name,
-                    ParentId = request.ParentId,
-                    ImageUrl = request.ImageUrl,
-                    Status = 1
-                };
-
-                await _categoryService.Create(category);
-                return OkWithData(new CategoryResponse { Category = category });
-            }
-            catch (Exception ex)
+            if (request.ParentId.HasValue)
             {
-                return ServerErrorWithMessage(ex.Message);
+                var parentCategory = await _categoryService.GetByIdAsync(request.ParentId.Value);
+                if (parentCategory == null)
+                    return BadRequest("Parent category not found");
             }
+
+            var category = new Category
+            {
+                Name = request.Name,
+                Description = request.Description,
+                ParentId = request.ParentId,
+                ImageUrl = request.ImageUrl,
+                Status = request.Status
+            };
+
+            category = await _categoryService.CreateAsync(category);
+            return CreatedAtAction(nameof(GetById), new { id = category.Id }, (CategoryResponse)category);
         }
 
-        [Authorize(Roles = "ADMIN")]
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] CRUDCategoryRequest request)
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<CategoryResponse>> Update(int id, [FromBody] CreateCategoryRequest request)
         {
-            try
+            var category = await _categoryService.GetByIdAsync(id);
+            if (category == null)
+                return NotFound();
+
+            var existingCategory = await _categoryService.GetByNameAsync(request.Name);
+            if (existingCategory != null && existingCategory.Id != id)
+                return BadRequest("Category name already exists");
+
+            if (request.ParentId.HasValue)
             {
-                var category = await _categoryService.GetById(id);
-                if (category == null)
-                    return BadRequestWithMessage("Category not found");
+                if (request.ParentId.Value == id)
+                    return BadRequest("Category cannot be its own parent");
 
-                if (category.Name != request.Name)
-                {
-                    var existingCategory = await _categoryService.GetByName(request.Name);
-                    if (existingCategory != null)
-                        return BadRequestWithMessage("Category name already exists");
-                }
+                var parentCategory = await _categoryService.GetByIdAsync(request.ParentId.Value);
+                if (parentCategory == null)
+                    return BadRequest("Parent category not found");
 
-                category.Name = request.Name;
-                category.ParentId = request.ParentId;
-                category.ImageUrl = request.ImageUrl;
-
-                await _categoryService.Update(category);
-                return OkWithData(new CategoryResponse { Category = category });
+                // Check if the new parent is not a descendant of the current category
+                var descendants = await GetDescendantIds(id);
+                if (descendants.Contains(request.ParentId.Value))
+                    return BadRequest("Cannot move a category to its own descendant");
             }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+
+            category.Name = request.Name;
+            category.Description = request.Description;
+            category.ParentId = request.ParentId;
+            category.ImageUrl = request.ImageUrl;
+            category.Status = request.Status;
+
+            category = await _categoryService.UpdateAsync(category);
+            return Ok((CategoryResponse)category);
         }
 
-        [Authorize(Roles = "ADMIN")]
-        [HttpPost("{id}/image")]
-        public async Task<IActionResult> UploadImage(int id, IFormFile file)
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> Delete(int id)
         {
-            try
+            var category = await _categoryService.GetByIdAsync(id);
+            if (category == null)
+                return NotFound();
+
+            // Check if category has children
+            var children = await _categoryService.GetChildrenAsync(id);
+            if (children.Any())
+                return BadRequest("Cannot delete category with children. Delete children first.");
+
+            var result = await _categoryService.DeleteAsync(id);
+            if (!result)
+                return NotFound();
+
+            return NoContent();
+        }
+
+        [HttpGet("by-ids")]
+        public async Task<ActionResult<IEnumerable<CategoryResponse>>> GetByIds([FromQuery] int[] ids)
+        {
+            var categories = await _categoryService.GetByIdsWithProductsAsync(ids);
+            return Ok(categories.Select(c => (CategoryResponse)c));
+        }
+
+        private async Task<HashSet<int>> GetDescendantIds(int categoryId)
+        {
+            var result = new HashSet<int>();
+            var children = await _categoryService.GetChildrenAsync(categoryId);
+            
+            foreach (var child in children)
             {
-                var category = await _categoryService.GetById(id);
-                if (category == null)
-                    return BadRequestWithMessage("Category not found");
-
-                var fileName = await _firebaseImageService.SaveAsync(file);
-                var imageUrl = await _firebaseImageService.GetImageUrlAsync(fileName);
-
-                category.ImageUrl = imageUrl;
-                await _categoryService.Update(category);
-
-                return OkWithData(new CategoryResponse { Category = category });
+                result.Add(child.Id);
+                var descendants = await GetDescendantIds(child.Id);
+                result.UnionWith(descendants);
             }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+
+            return result;
         }
     }
 } 

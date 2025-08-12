@@ -1,6 +1,8 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using webecommerce.Common.Utils;
 using webecommerce.Data.Repository;
+using webecommerce.Models;
 
 namespace webecommerce.Services.Impl
 {
@@ -13,54 +15,69 @@ namespace webecommerce.Services.Impl
             _categoryRepository = categoryRepository;
         }
 
-        public void Create(Category category)
+        public async Task<StoreProcedureListResult<Category>> GetListAsync(string searchKey = "", int status = 1, Pagination pagination = null)
         {
-            _categoryRepository.Create(category);
+            return await _categoryRepository.GetListAsync(searchKey, status, pagination);
         }
 
-        public Category FindOne(int id)
+        public async Task<Category> GetByIdAsync(int id)
         {
-            return _categoryRepository.FindOne(id);
+            return await _categoryRepository.GetByIdAsync(id);
         }
 
-        public void Update(Category category)
+        public async Task<Category> CreateAsync(Category category)
         {
-            _categoryRepository.Update(category);
+            return await _categoryRepository.AddAsync(category);
         }
 
-        public List<Category> GetAll()
+        public async Task<Category> UpdateAsync(Category category)
         {
-            return _categoryRepository.GetAll();
+            return await _categoryRepository.UpdateAsync(category);
         }
 
-        public Category FindByName(string name)
+        public async Task<bool> DeleteAsync(int id)
         {
-            return _categoryRepository.FindByName(name);
+            return await _categoryRepository.DeleteAsync(id);
         }
 
-        public List<Category> FindByParentId(int parentId)
+        public async Task<IEnumerable<Category>> GetAllAsync()
         {
-            return _categoryRepository.FindByParentId(parentId);
+            return await _categoryRepository.GetAllAsync();
         }
 
-        public List<Category> FindByStatus(int status)
+        public async Task<IEnumerable<Category>> GetByStatusAsync(int status)
         {
-            return _categoryRepository.FindByStatus(status);
+            return await _categoryRepository.FindAsync(c => c.Status == status);
         }
 
-        public List<Category> FindAllActive()
+        public async Task<Category> GetByNameAsync(string name)
         {
-            return _categoryRepository.FindAllActive();
+            return await _categoryRepository.GetByNameAsync(name);
         }
 
-        public List<Category> FindAllParent()
+        public async Task<bool> CheckNameExistsAsync(string name)
         {
-            return _categoryRepository.FindAllParent();
+            return await _categoryRepository.CheckNameExistsAsync(name);
         }
 
-        public List<Category> FindAllChild(int parentId)
+        public async Task<StoreProcedureListResult<Category>> GetListWithProductsAsync(string searchKey = "", int status = 1, Pagination pagination = null)
         {
-            return _categoryRepository.FindAllChild(parentId);
+            return await _categoryRepository.GetListWithProductsAsync(searchKey, status, pagination);
+        }
+
+        public async Task<IEnumerable<Category>> GetByIdsWithProductsAsync(IEnumerable<int> ids)
+        {
+            return await _categoryRepository.GetByIdsWithProductsAsync(ids);
+        }
+
+        public async Task<IEnumerable<Category>> GetRootCategoriesAsync()
+        {
+            return await _categoryRepository.GetRootCategoriesAsync();
+        }
+
+        public async Task<IEnumerable<Category>> GetChildrenAsync(int parentId)
+        {
+            return await _categoryRepository.GetChildrenAsync(parentId);
         }
     }
 } 

@@ -1,263 +1,266 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using webecommerce.Common.Utils;
 using webecommerce.Models;
 using webecommerce.Models.Requests;
 using webecommerce.Models.Responses;
 using webecommerce.Services;
-using webecommerce.Common.Utils;
-using System.Collections.Generic;
-using System.Linq;
-using System;
 
 namespace webecommerce.Controllers
 {
-    [Route("api/v1/[controller]")]
     [ApiController]
-    public class ProductController : BaseController
+    [Route("api/[controller]")]
+    public class ProductController : ControllerBase
     {
         private readonly IProductService _productService;
-        private readonly ICategoryService _categoryService;
-        private readonly IBrandService _brandService;
-        private readonly IImageService _imageService;
-        private readonly IFirebaseImageService _firebaseImageService;
 
-        public ProductController(
-            IProductService productService,
-            ICategoryService categoryService,
-            IBrandService brandService,
-            IImageService imageService,
-            IFirebaseImageService firebaseImageService)
+        public ProductController(IProductService productService)
         {
             _productService = productService;
-            _categoryService = categoryService;
-            _brandService = brandService;
-            _imageService = imageService;
-            _firebaseImageService = firebaseImageService;
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll(
-            [FromQuery] string keySearch = "",
-            [FromQuery] int status = -1,
-            [FromQuery] int page = 1,
-            [FromQuery] int limit = 10)
+        public async Task<ActionResult<StoreProcedureListResult<ProductResponse>>> GetList(
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
         {
-            try
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _productService.GetListAsync(searchKey, status, pagination);
+
+            return Ok(new StoreProcedureListResult<ProductResponse>
             {
-                var pagination = new Pagination(limit, (page - 1) * limit);
-                var result = await _productService.GetList(keySearch, status, pagination);
+                Items = result.Items.Select(p => (ProductResponse)p).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
+        }
 
-                // Get unique brandIds and categoryIds
-                var brandIds = result.Data.Select(p => p.BrandId).Distinct().ToList();
-                var categoryIds = result.Data.Select(p => p.CategoryId).Distinct().ToList();
+        [HttpGet("by-brand/{brandId}")]
+        public async Task<ActionResult<StoreProcedureListResult<ProductResponse>>> GetListByBrand(
+            int brandId,
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _productService.GetListByBrandAsync(brandId, searchKey, status, pagination);
 
-                // Get brands and categories
-                var brands = await _brandService.GetByIds(brandIds);
-                var categories = await _categoryService.GetByIds(categoryIds);
-
-                // Create lookup dictionaries
-                var brandDict = brands.ToDictionary(b => b.Id);
-                var categoryDict = categories.ToDictionary(c => c.Id);
-
-                // Map to response
-                var productResponses = result.Data.Select(product => new ProductResponse
-                {
-                    Product = product,
-                    BrandName = brandDict.ContainsKey(product.BrandId) ? brandDict[product.BrandId].Name : null,
-                    CategoryName = categoryDict.ContainsKey(product.CategoryId) ? categoryDict[product.CategoryId].Name : null
-                }).ToList();
-
-                return OkWithData(new BaseListDataResponse<ProductResponse>
-                {
-                    List = productResponses,
-                    TotalRecord = result.TotalRecord
-                });
-            }
-            catch (Exception ex)
+            return Ok(new StoreProcedureListResult<ProductResponse>
             {
-                return ServerErrorWithMessage(ex.Message);
-            }
+                Items = result.Items.Select(p => (ProductResponse)p).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
+        }
+
+        [HttpGet("by-category/{categoryId}")]
+        public async Task<ActionResult<StoreProcedureListResult<ProductResponse>>> GetListByCategory(
+            int categoryId,
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _productService.GetListByCategoryAsync(categoryId, searchKey, status, pagination);
+
+            return Ok(new StoreProcedureListResult<ProductResponse>
+            {
+                Items = result.Items.Select(p => (ProductResponse)p).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
+        }
+
+        [HttpGet("by-price-range")]
+        public async Task<ActionResult<StoreProcedureListResult<ProductResponse>>> GetListByPriceRange(
+            [FromQuery] decimal minPrice,
+            [FromQuery] decimal maxPrice,
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _productService.GetListByPriceRangeAsync(minPrice, maxPrice, searchKey, status, pagination);
+
+            return Ok(new StoreProcedureListResult<ProductResponse>
+            {
+                Items = result.Items.Select(p => (ProductResponse)p).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
         }
 
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(int id)
+        public async Task<ActionResult<ProductResponse>> GetById(int id)
         {
-            try
-            {
-                var product = await _productService.GetById(id);
-                if (product == null)
-                    return BadRequestWithMessage("Product not found");
+            var product = await _productService.GetByIdAsync(id);
+            if (product == null)
+                return NotFound();
 
-                var brand = await _brandService.GetById(product.BrandId);
-                var category = await _categoryService.GetById(product.CategoryId);
-
-                var response = new ProductResponse
-                {
-                    Product = product,
-                    BrandName = brand?.Name,
-                    CategoryName = category?.Name
-                };
-
-                return OkWithData(response);
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            return Ok((ProductResponse)product);
         }
 
-        [Authorize(Roles = "ADMIN")]
-        [HttpPost("{id}/change-status")]
-        public async Task<IActionResult> ChangeStatus(int id)
+        [HttpGet("by-sku/{sku}")]
+        public async Task<ActionResult<ProductResponse>> GetBySku(string sku)
         {
-            try
-            {
-                var product = await _productService.GetById(id);
-                if (product == null)
-                    return BadRequestWithMessage("Product not found");
+            var product = await _productService.GetBySkuAsync(sku);
+            if (product == null)
+                return NotFound();
 
-                product.Status = product.Status == 1 ? 0 : 1;
-                await _productService.Update(product);
-
-                return OkWithData(new ProductResponse { Product = product });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            return Ok((ProductResponse)product);
         }
 
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CRUDProductRequest request)
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<ProductResponse>> Create([FromBody] CreateProductRequest request)
         {
-            try
+            if (await _productService.CheckSkuExistsAsync(request.Sku))
+                return BadRequest("Product SKU already exists");
+
+            if (await _productService.CheckNameExistsAsync(request.Name))
+                return BadRequest("Product name already exists");
+
+            var brand = await _productService.GetBrandByIdAsync(request.BrandId);
+            if (brand == null)
+                return BadRequest("Brand not found");
+
+            var category = await _productService.GetCategoryByIdAsync(request.CategoryId);
+            if (category == null)
+                return BadRequest("Category not found");
+
+            var product = new Product
             {
-                var existingProduct = await _productService.GetByName(request.Name);
-                if (existingProduct != null)
-                    return BadRequestWithMessage("Product already exists");
+                Name = request.Name,
+                Sku = request.Sku,
+                Description = request.Description,
+                Price = request.Price,
+                DiscountPrice = request.DiscountPrice,
+                BrandId = request.BrandId,
+                CategoryId = request.CategoryId,
+                Status = request.Status
+            };
 
-                var category = await _categoryService.GetById(request.CategoryId);
-                if (category == null)
-                    return BadRequestWithMessage("Category not found");
-
-                var product = new Product
-                {
-                    Name = request.Name,
-                    Description = request.Description ?? "",
-                    BrandId = request.BrandId,
-                    CategoryId = request.CategoryId,
-                    Price = request.Price,
-                    AverageRating = 0,
-                    Status = 1
-                };
-
-                await _productService.Create(product);
-                return OkWithData(new ProductResponse { Product = product });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            product = await _productService.CreateAsync(product);
+            return CreatedAtAction(nameof(GetById), new { id = product.Id }, (ProductResponse)product);
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] CRUDProductRequest request)
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<ProductResponse>> Update(int id, [FromBody] CreateProductRequest request)
         {
-            try
-            {
-                var product = await _productService.GetById(id);
-                if (product == null)
-                    return BadRequestWithMessage("Product not found");
+            var product = await _productService.GetByIdAsync(id);
+            if (product == null)
+                return NotFound();
 
-                if (product.Name != request.Name)
-                {
-                    var existingProduct = await _productService.GetByName(request.Name);
-                    if (existingProduct != null)
-                        return BadRequestWithMessage("Product name already exists");
-                }
+            var existingProductBySku = await _productService.GetBySkuAsync(request.Sku);
+            if (existingProductBySku != null && existingProductBySku.Id != id)
+                return BadRequest("Product SKU already exists");
 
-                product.Name = request.Name;
-                product.Description = request.Description;
-                product.Price = request.Price;
+            var existingProductByName = await _productService.GetByNameAsync(request.Name);
+            if (existingProductByName != null && existingProductByName.Id != id)
+                return BadRequest("Product name already exists");
 
-                await _productService.Update(product);
-                return OkWithData(new ProductResponse { Product = product });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            var brand = await _productService.GetBrandByIdAsync(request.BrandId);
+            if (brand == null)
+                return BadRequest("Brand not found");
+
+            var category = await _productService.GetCategoryByIdAsync(request.CategoryId);
+            if (category == null)
+                return BadRequest("Category not found");
+
+            product.Name = request.Name;
+            product.Sku = request.Sku;
+            product.Description = request.Description;
+            product.Price = request.Price;
+            product.DiscountPrice = request.DiscountPrice;
+            product.BrandId = request.BrandId;
+            product.CategoryId = request.CategoryId;
+            product.Status = request.Status;
+
+            product = await _productService.UpdateAsync(product);
+            return Ok((ProductResponse)product);
         }
 
-        [Authorize(Roles = "ADMIN")]
-        [HttpPost("{id}/image")]
-        public async Task<IActionResult> UploadImage(int id, IFormFile file)
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> Delete(int id)
         {
-            try
-            {
-                var product = await _productService.GetById(id);
-                if (product == null)
-                    return BadRequestWithMessage("Product not found");
+            var result = await _productService.DeleteAsync(id);
+            if (!result)
+                return NotFound();
 
-                var fileName = await _firebaseImageService.SaveAsync(file);
-                var imageUrl = await _firebaseImageService.GetImageUrlAsync(fileName);
-
-                var image = new Image
-                {
-                    Url = imageUrl,
-                    ProductId = id
-                };
-                await _imageService.Create(image);
-
-                product.ImageUrl = imageUrl;
-                await _productService.Update(product);
-
-                return OkWithData(new ProductResponse { Product = product });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            return NoContent();
         }
 
-        [Authorize(Roles = "ADMIN")]
-        [HttpPost("{id}/images")]
-        public async Task<IActionResult> UploadMultipleImages(int id, List<IFormFile> files)
+        [HttpGet("by-ids")]
+        public async Task<ActionResult<IEnumerable<ProductResponse>>> GetByIds([FromQuery] int[] ids)
         {
-            try
+            var products = await _productService.GetByIdsAsync(ids);
+            return Ok(products.Select(p => (ProductResponse)p));
+        }
+
+        [HttpGet("{id}/details")]
+        public async Task<ActionResult<ProductDetailResponse>> GetProductDetails(int id)
+        {
+            var product = await _productService.GetProductDetailsAsync(id);
+            if (product == null)
+                return NotFound();
+
+            return Ok((ProductDetailResponse)product);
+        }
+
+        [HttpGet("{id}/reviews")]
+        public async Task<ActionResult<StoreProcedureListResult<ReviewResponse>>> GetProductReviews(
+            int id,
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _productService.GetProductReviewsAsync(id, status, pagination);
+
+            return Ok(new StoreProcedureListResult<ReviewResponse>
             {
-                var product = await _productService.GetById(id);
-                if (product == null)
-                    return BadRequestWithMessage("Product not found");
+                Items = result.Items.Select(r => (ReviewResponse)r).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
+        }
 
-                var images = new List<Image>();
-                foreach (var file in files)
-                {
-                    var fileName = await _firebaseImageService.SaveAsync(file);
-                    var imageUrl = await _firebaseImageService.GetImageUrlAsync(fileName);
+        [HttpGet("trending")]
+        public async Task<ActionResult<IEnumerable<ProductResponse>>> GetTrendingProducts(
+            [FromQuery] int limit = 10)
+        {
+            var products = await _productService.GetTrendingProductsAsync(limit);
+            return Ok(products.Select(p => (ProductResponse)p));
+        }
 
-                    var image = new Image
-                    {
-                        Url = imageUrl,
-                        ProductId = id
-                    };
-                    await _imageService.Create(image);
-                    images.Add(image);
-                }
+        [HttpGet("new-arrivals")]
+        public async Task<ActionResult<IEnumerable<ProductResponse>>> GetNewArrivals(
+            [FromQuery] int limit = 10)
+        {
+            var products = await _productService.GetNewArrivalsAsync(limit);
+            return Ok(products.Select(p => (ProductResponse)p));
+        }
 
-                if (images.Any())
-                {
-                    product.ImageUrl = images.First().Url;
-                    await _productService.Update(product);
-                }
-
-                var productResponses = images.Select(_ => new ProductResponse { Product = product }).ToList();
-                return OkWithData(productResponses);
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+        [HttpGet("best-sellers")]
+        public async Task<ActionResult<IEnumerable<ProductResponse>>> GetBestSellers(
+            [FromQuery] int limit = 10)
+        {
+            var products = await _productService.GetBestSellersAsync(limit);
+            return Ok(products.Select(p => (ProductResponse)p));
         }
     }
 } 

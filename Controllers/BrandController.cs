@@ -1,188 +1,130 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using webecommerce.Common.Utils;
 using webecommerce.Models;
 using webecommerce.Models.Requests;
 using webecommerce.Models.Responses;
 using webecommerce.Services;
-using webecommerce.Common.Utils;
-using System.Collections.Generic;
-using System;
 
 namespace webecommerce.Controllers
 {
-    [Route("api/v1/[controller]")]
     [ApiController]
-    public class BrandController : BaseController
+    [Route("api/[controller]")]
+    public class BrandController : ControllerBase
     {
         private readonly IBrandService _brandService;
-        private readonly IFirebaseImageService _firebaseImageService;
 
-        public BrandController(
-            IBrandService brandService,
-            IFirebaseImageService firebaseImageService)
+        public BrandController(IBrandService brandService)
         {
             _brandService = brandService;
-            _firebaseImageService = firebaseImageService;
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll(
-            [FromQuery] string keySearch = "",
-            [FromQuery] int status = -1,
-            [FromQuery] int page = 1,
-            [FromQuery] int limit = 10)
+        public async Task<ActionResult<StoreProcedureListResult<BrandResponse>>> GetList(
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
         {
-            try
-            {
-                var pagination = new Pagination(limit, (page - 1) * limit);
-                var result = await _brandService.GetList(keySearch, status, pagination);
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _brandService.GetListAsync(searchKey, status, pagination);
 
-                var listData = new BaseListDataResponse<BrandResponse>
-                {
-                    List = result.Data.Select(b => new BrandResponse { Brand = b }).ToList(),
-                    TotalRecord = result.TotalRecord
-                };
-
-                return OkWithData(listData);
-            }
-            catch (Exception ex)
+            return Ok(new StoreProcedureListResult<BrandResponse>
             {
-                return ServerErrorWithMessage(ex.Message);
-            }
+                Items = result.Items.Select(b => (BrandResponse)b).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
         }
 
-        [HttpGet("all")]
-        public async Task<IActionResult> GetAllBrands()
+        [HttpGet("with-products")]
+        public async Task<ActionResult<StoreProcedureListResult<BrandResponse>>> GetListWithProducts(
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
         {
-            try
-            {
-                var pagination = new Pagination(int.MaxValue, 0);
-                var result = await _brandService.GetList("", 1, pagination);
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _brandService.GetListWithProductsAsync(searchKey, status, pagination);
 
-                var brandResponses = result.Data.Select(b => new BrandResponse { Brand = b }).ToList();
-                return OkWithData(brandResponses);
-            }
-            catch (Exception ex)
+            return Ok(new StoreProcedureListResult<BrandResponse>
             {
-                return ServerErrorWithMessage(ex.Message);
-            }
+                Items = result.Items.Select(b => (BrandResponse)b).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
         }
 
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(int id)
+        public async Task<ActionResult<BrandResponse>> GetById(int id)
         {
-            try
-            {
-                var brand = await _brandService.GetById(id);
-                if (brand == null)
-                    return BadRequestWithMessage("Brand not found");
+            var brand = await _brandService.GetByIdAsync(id);
+            if (brand == null)
+                return NotFound();
 
-                return OkWithData(new BrandResponse { Brand = brand });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            return Ok((BrandResponse)brand);
         }
 
-        [Authorize(Roles = "ADMIN")]
-        [HttpPost("{id}/change-status")]
-        public async Task<IActionResult> ChangeStatus(int id)
-        {
-            try
-            {
-                var brand = await _brandService.GetById(id);
-                if (brand == null)
-                    return BadRequestWithMessage("Brand not found");
-
-                brand.Status = brand.Status == 1 ? 0 : 1;
-                await _brandService.Update(brand);
-
-                return OkWithData(new BrandResponse { Brand = brand });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
-        }
-
-        [Authorize(Roles = "ADMIN")]
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CRUDBrandRequest request)
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<BrandResponse>> Create([FromBody] CreateBrandRequest request)
         {
-            try
-            {
-                var existingBrand = await _brandService.GetByName(request.Name);
-                if (existingBrand != null)
-                    return BadRequestWithMessage("Brand already exists");
+            if (await _brandService.CheckNameExistsAsync(request.Name))
+                return BadRequest("Brand name already exists");
 
-                var brand = new Brand
-                {
-                    Name = request.Name,
-                    ImageUrl = request.ImageUrl,
-                    Status = 1
-                };
-
-                await _brandService.Create(brand);
-                return OkWithData(new BrandResponse { Brand = brand });
-            }
-            catch (Exception ex)
+            var brand = new Brand
             {
-                return ServerErrorWithMessage(ex.Message);
-            }
+                Name = request.Name,
+                Description = request.Description,
+                Logo = request.Logo,
+                Status = request.Status
+            };
+
+            brand = await _brandService.CreateAsync(brand);
+            return CreatedAtAction(nameof(GetById), new { id = brand.Id }, (BrandResponse)brand);
         }
 
-        [Authorize(Roles = "ADMIN")]
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] CRUDBrandRequest request)
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<BrandResponse>> Update(int id, [FromBody] CreateBrandRequest request)
         {
-            try
-            {
-                var brand = await _brandService.GetById(id);
-                if (brand == null)
-                    return BadRequestWithMessage("Brand not found");
+            var brand = await _brandService.GetByIdAsync(id);
+            if (brand == null)
+                return NotFound();
 
-                if (brand.Name != request.Name)
-                {
-                    var existingBrand = await _brandService.GetByName(request.Name);
-                    if (existingBrand != null)
-                        return BadRequestWithMessage("Brand name already exists");
-                }
+            var existingBrand = await _brandService.GetByNameAsync(request.Name);
+            if (existingBrand != null && existingBrand.Id != id)
+                return BadRequest("Brand name already exists");
 
-                brand.Name = request.Name;
-                brand.ImageUrl = request.ImageUrl;
+            brand.Name = request.Name;
+            brand.Description = request.Description;
+            brand.Logo = request.Logo;
+            brand.Status = request.Status;
 
-                await _brandService.Update(brand);
-                return OkWithData(new BrandResponse { Brand = brand });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            brand = await _brandService.UpdateAsync(brand);
+            return Ok((BrandResponse)brand);
         }
 
-        [Authorize(Roles = "ADMIN")]
-        [HttpPost("{id}/image")]
-        public async Task<IActionResult> UploadImage(int id, IFormFile file)
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> Delete(int id)
         {
-            try
-            {
-                var brand = await _brandService.GetById(id);
-                if (brand == null)
-                    return BadRequestWithMessage("Brand not found");
+            var result = await _brandService.DeleteAsync(id);
+            if (!result)
+                return NotFound();
 
-                var fileName = await _firebaseImageService.SaveAsync(file);
-                var imageUrl = await _firebaseImageService.GetImageUrlAsync(fileName);
+            return NoContent();
+        }
 
-                brand.ImageUrl = imageUrl;
-                await _brandService.Update(brand);
-
-                return OkWithData(new BrandResponse { Brand = brand });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+        [HttpGet("by-ids")]
+        public async Task<ActionResult<IEnumerable<BrandResponse>>> GetByIds([FromQuery] int[] ids)
+        {
+            var brands = await _brandService.GetByIdsWithProductsAsync(ids);
+            return Ok(brands.Select(b => (BrandResponse)b));
         }
     }
 } 

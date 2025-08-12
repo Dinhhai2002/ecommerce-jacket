@@ -1,17 +1,20 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using webecommerce.Models;
+using webecommerce.Common.Utils;
 
 namespace webecommerce.Services
 {
     public interface ISizeService
     {
-        void Create(Size size);
-        Size FindOne(int id);
-        void Update(Size size);
-        List<Size> GetAll();
-        Size FindByCode(string code);
-        Size FindByName(string name);
-        List<Size> FindByStatus(int status);
-        List<Size> FindAllActive();
+        Task<StoreProcedureListResult<Size>> GetList(string keySearch, int status, Pagination pagination);
+        Task<Size> GetById(int id);
+        Task<Size> Create(Size size);
+        Task<Size> Update(Size size);
+        Task<List<Size>> GetAll();
+        Task<List<Size>> GetByStatus(int status);
+        Task<Size> GetByName(string name);
+        Task<Size> GetByCode(string code);
+        Task<List<Size>> FindAllActive();
     }
 } 

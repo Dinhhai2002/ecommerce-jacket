@@ -1,6 +1,10 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using webecommerce.Models;
 using webecommerce.Data.Repository;
+using webecommerce.Common.Utils;
 
 namespace webecommerce.Services.Impl
 {
@@ -13,39 +17,56 @@ namespace webecommerce.Services.Impl
             _userRegisterRepository = userRegisterRepository;
         }
 
-        public void Create(UserRegister userRegister)
+        public async Task<StoreProcedureListResult<UserRegister>> GetList(string keySearch, int status, Pagination pagination)
         {
-            _userRegisterRepository.Create(userRegister);
+            return await _userRegisterRepository.SpGListUserRegister(keySearch, status, pagination);
         }
 
-        public UserRegister FindOne(int id)
+        public async Task<UserRegister> GetById(int id)
         {
-            return _userRegisterRepository.FindOne(id);
+            return await _userRegisterRepository.FindOne(id);
         }
 
-        public void Update(UserRegister userRegister)
+        public async Task<UserRegister> Create(UserRegister userRegister)
         {
-            _userRegisterRepository.Update(userRegister);
+            await _userRegisterRepository.Create(userRegister);
+            return userRegister;
         }
 
-        public List<UserRegister> GetAll()
+        public async Task<UserRegister> Update(UserRegister userRegister)
         {
-            return _userRegisterRepository.GetAll();
+            await _userRegisterRepository.Update(userRegister);
+            return userRegister;
         }
 
-        public UserRegister FindByUsernameAndEmail(string username, string email)
+        public async Task<List<UserRegister>> GetAll()
         {
-            return _userRegisterRepository.FindByUsernameAndEmail(username, email);
+            return await _userRegisterRepository.GetAll().ToListAsync();
         }
 
-        public List<UserRegister> FindByStatus(int status)
+        public async Task<List<UserRegister>> GetByStatus(int status)
         {
-            return _userRegisterRepository.FindByStatus(status);
+            return await _userRegisterRepository.FindByCondition(u => u.Status == status).ToListAsync();
         }
 
-        public List<UserRegister> FindAllActive()
+        public async Task<UserRegister> GetByUsername(string username)
         {
-            return _userRegisterRepository.FindAllActive();
+            return await _userRegisterRepository.FindByUsername(username);
+        }
+
+        public async Task<UserRegister> GetByEmail(string email)
+        {
+            return await _userRegisterRepository.FindByEmail(email);
+        }
+
+        public async Task<UserRegister> GetByPhone(string phone)
+        {
+            return await _userRegisterRepository.FindByPhone(phone);
+        }
+
+        public async Task<List<UserRegister>> FindAllActive()
+        {
+            return await _userRegisterRepository.FindAllActive();
         }
     }
 } 

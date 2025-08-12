@@ -1,137 +1,234 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using webecommerce.Common.Utils;
 using webecommerce.Models;
 using webecommerce.Models.Requests;
 using webecommerce.Models.Responses;
 using webecommerce.Services;
-using webecommerce.Common.Utils;
-using System.Collections.Generic;
-using System;
-using System.Linq;
 
 namespace webecommerce.Controllers
 {
-    [Route("api/v1/[controller]")]
     [ApiController]
-    public class ReviewController : BaseController
+    [Route("api/[controller]")]
+    public class ReviewController : ControllerBase
     {
         private readonly IReviewService _reviewService;
-        private readonly IUserService _userService;
+        private readonly IProductService _productService;
 
         public ReviewController(
             IReviewService reviewService,
-            IUserService userService)
+            IProductService productService)
         {
             _reviewService = reviewService;
-            _userService = userService;
+            _productService = productService;
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll(
-            [FromQuery] int userId = -1,
-            [FromQuery] int productId = -1,
-            [FromQuery] string keySearch = "",
-            [FromQuery] int status = -1,
-            [FromQuery] int page = 1,
-            [FromQuery] int limit = 10)
+        public async Task<ActionResult<StoreProcedureListResult<ReviewResponse>>> GetList(
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
         {
-            try
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _reviewService.GetListAsync(searchKey, status, pagination);
+
+            return Ok(new StoreProcedureListResult<ReviewResponse>
             {
-                var pagination = new Pagination(limit, (page - 1) * limit);
-                var result = await _reviewService.GetList(userId, productId, keySearch, status, pagination);
+                Items = result.Items.Select(r => (ReviewResponse)r).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
+        }
 
-                // Get unique user IDs from reviews
-                var userIds = result.Data.Select(r => r.UserId).Distinct().ToList();
+        [HttpGet("by-product/{productId}")]
+        public async Task<ActionResult<StoreProcedureListResult<ReviewResponse>>> GetListByProduct(
+            int productId,
+            [FromQuery] int rating = 0,
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _reviewService.GetListByProductAsync(productId, rating, status, pagination);
 
-                // Get users information
-                var users = await _userService.GetByIds(userIds);
-                var userMap = users.ToDictionary(u => u.Id);
-
-                var listData = new BaseListDataResponse<ReviewResponse>
-                {
-                    List = result.Data.Select(r => new ReviewResponse 
-                    { 
-                        Review = r,
-                        User = userMap.GetValueOrDefault(r.UserId)
-                    }).ToList(),
-                    TotalRecord = result.TotalRecord
-                };
-
-                return OkWithData(listData);
-            }
-            catch (Exception ex)
+            return Ok(new StoreProcedureListResult<ReviewResponse>
             {
-                return ServerErrorWithMessage(ex.Message);
-            }
+                Items = result.Items.Select(r => (ReviewResponse)r).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
+        }
+
+        [HttpGet("by-user/{userId}")]
+        public async Task<ActionResult<StoreProcedureListResult<ReviewResponse>>> GetListByUser(
+            int userId,
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _reviewService.GetListByUserAsync(userId, status, pagination);
+
+            return Ok(new StoreProcedureListResult<ReviewResponse>
+            {
+                Items = result.Items.Select(r => (ReviewResponse)r).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
         }
 
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(int id)
+        public async Task<ActionResult<ReviewResponse>> GetById(int id)
         {
-            try
-            {
-                var review = await _reviewService.GetById(id);
-                if (review == null)
-                    return BadRequestWithMessage("Review not found");
+            var review = await _reviewService.GetByIdAsync(id);
+            if (review == null)
+                return NotFound();
 
-                var user = await _userService.GetById(review.UserId);
-                return OkWithData(new ReviewResponse { Review = review, User = user });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            return Ok((ReviewResponse)review);
         }
 
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CRUDReviewRequest request)
+        [Authorize]
+        public async Task<ActionResult<ReviewResponse>> Create([FromBody] CreateReviewRequest request)
         {
-            try
+            var product = await _productService.GetByIdAsync(request.ProductId);
+            if (product == null)
+                return BadRequest("Product not found");
+
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
+
+            // Check if user has already reviewed this product
+            if (await _reviewService.HasUserReviewedProductAsync(userId, request.ProductId))
+                return BadRequest("You have already reviewed this product");
+
+            var review = new Review
             {
-                var user = await GetCurrentUser();
+                ProductId = request.ProductId,
+                UserId = userId,
+                Rating = request.Rating,
+                Comment = request.Comment,
+                Status = request.Status
+            };
 
-                // Check if user has already reviewed this product
-                var existingReview = await _reviewService.GetByUserIdAndProductId(user.Id, request.ProductId);
-                if (existingReview != null)
-                    return BadRequestWithMessage("You have already reviewed this product");
+            review = await _reviewService.CreateAsync(review);
 
-                var review = new Review
-                {
-                    UserId = user.Id,
-                    ProductId = request.ProductId,
-                    Rating = request.Rating,
-                    Comment = request.Comment,
-                    Status = 1
-                };
+            // Update product average rating
+            await _productService.UpdateAverageRatingAsync(request.ProductId);
 
-                await _reviewService.Create(review);
-                return OkWithData(new ReviewResponse { Review = review });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            return CreatedAtAction(nameof(GetById), new { id = review.Id }, (ReviewResponse)review);
         }
 
-        [Authorize(Roles = "ADMIN")]
-        [HttpPost("{id}/change-status")]
-        public async Task<IActionResult> ChangeStatus(int id)
+        [HttpPut("{id}")]
+        [Authorize]
+        public async Task<ActionResult<ReviewResponse>> Update(int id, [FromBody] UpdateReviewRequest request)
         {
-            try
-            {
-                var review = await _reviewService.GetById(id);
-                if (review == null)
-                    return BadRequestWithMessage("Review not found");
+            var review = await _reviewService.GetByIdAsync(id);
+            if (review == null)
+                return NotFound();
 
-                review.Status = review.Status == 1 ? 0 : 1;
-                await _reviewService.Update(review);
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
 
-                return OkWithData(new ReviewResponse { Review = review });
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorWithMessage(ex.Message);
-            }
+            // Check if the review belongs to the current user
+            if (review.UserId != userId && !User.IsInRole("Admin"))
+                return Forbid();
+
+            review.Rating = request.Rating;
+            review.Comment = request.Comment;
+            
+            // Only admin can update status
+            if (User.IsInRole("Admin"))
+                review.Status = request.Status;
+
+            review = await _reviewService.UpdateAsync(review);
+
+            // Update product average rating
+            await _productService.UpdateAverageRatingAsync(review.ProductId);
+
+            return Ok((ReviewResponse)review);
+        }
+
+        [HttpDelete("{id}")]
+        [Authorize]
+        public async Task<ActionResult> Delete(int id)
+        {
+            var review = await _reviewService.GetByIdAsync(id);
+            if (review == null)
+                return NotFound();
+
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
+
+            // Check if the review belongs to the current user
+            if (review.UserId != userId && !User.IsInRole("Admin"))
+                return Forbid();
+
+            var result = await _reviewService.DeleteAsync(id);
+            if (!result)
+                return NotFound();
+
+            // Update product average rating
+            await _productService.UpdateAverageRatingAsync(review.ProductId);
+
+            return NoContent();
+        }
+
+        [HttpGet("summary/by-product/{productId}")]
+        public async Task<ActionResult<ReviewSummaryResponse>> GetReviewSummary(int productId)
+        {
+            var summary = await _reviewService.GetReviewSummaryAsync(productId);
+            return Ok(summary);
+        }
+
+        [HttpGet("helpful")]
+        public async Task<ActionResult<IEnumerable<ReviewResponse>>> GetMostHelpfulReviews(
+            [FromQuery] int limit = 10)
+        {
+            var reviews = await _reviewService.GetMostHelpfulReviewsAsync(limit);
+            return Ok(reviews.Select(r => (ReviewResponse)r));
+        }
+
+        [HttpPost("{id}/helpful")]
+        [Authorize]
+        public async Task<ActionResult> MarkReviewAsHelpful(int id)
+        {
+            var review = await _reviewService.GetByIdAsync(id);
+            if (review == null)
+                return NotFound();
+
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
+
+            var result = await _reviewService.MarkReviewAsHelpfulAsync(id, userId);
+            if (!result)
+                return BadRequest("You have already marked this review as helpful");
+
+            return NoContent();
+        }
+
+        [HttpDelete("{id}/helpful")]
+        [Authorize]
+        public async Task<ActionResult> UnmarkReviewAsHelpful(int id)
+        {
+            var review = await _reviewService.GetByIdAsync(id);
+            if (review == null)
+                return NotFound();
+
+            // Get current user ID from claims
+            var userId = int.Parse(User.FindFirst("sub")?.Value);
+
+            var result = await _reviewService.UnmarkReviewAsHelpfulAsync(id, userId);
+            if (!result)
+                return BadRequest("You have not marked this review as helpful");
+
+            return NoContent();
         }
     }
 } 

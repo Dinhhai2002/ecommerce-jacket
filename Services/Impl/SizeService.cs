@@ -1,6 +1,10 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using webecommerce.Models;
 using webecommerce.Data.Repository;
+using webecommerce.Common.Utils;
 
 namespace webecommerce.Services.Impl
 {
@@ -13,44 +17,51 @@ namespace webecommerce.Services.Impl
             _sizeRepository = sizeRepository;
         }
 
-        public void Create(Size size)
+        public async Task<StoreProcedureListResult<Size>> GetList(string keySearch, int status, Pagination pagination)
         {
-            _sizeRepository.Create(size);
+            return await _sizeRepository.SpGListSize(keySearch, status, pagination);
         }
 
-        public Size FindOne(int id)
+        public async Task<Size> GetById(int id)
         {
-            return _sizeRepository.FindOne(id);
+            return await _sizeRepository.FindOne(id);
         }
 
-        public void Update(Size size)
+        public async Task<Size> Create(Size size)
         {
-            _sizeRepository.Update(size);
+            await _sizeRepository.Create(size);
+            return size;
         }
 
-        public List<Size> GetAll()
+        public async Task<Size> Update(Size size)
         {
-            return _sizeRepository.GetAll();
+            await _sizeRepository.Update(size);
+            return size;
         }
 
-        public Size FindByCode(string code)
+        public async Task<List<Size>> GetAll()
         {
-            return _sizeRepository.FindByCode(code);
+            return await _sizeRepository.GetAll().ToListAsync();
         }
 
-        public Size FindByName(string name)
+        public async Task<List<Size>> GetByStatus(int status)
         {
-            return _sizeRepository.FindByName(name);
+            return await _sizeRepository.FindByCondition(s => s.Status == status).ToListAsync();
         }
 
-        public List<Size> FindByStatus(int status)
+        public async Task<Size> GetByName(string name)
         {
-            return _sizeRepository.FindByStatus(status);
+            return await _sizeRepository.FindByName(name);
         }
 
-        public List<Size> FindAllActive()
+        public async Task<Size> GetByCode(string code)
         {
-            return _sizeRepository.FindAllActive();
+            return await _sizeRepository.FindByCode(code);
+        }
+
+        public async Task<List<Size>> FindAllActive()
+        {
+            return await _sizeRepository.FindAllActive();
         }
     }
 } 

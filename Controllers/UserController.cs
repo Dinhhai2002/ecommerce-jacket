@@ -1,193 +1,256 @@
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using webecommerce.Models;
 using webecommerce.Models.Requests;
 using webecommerce.Models.Responses;
 using webecommerce.Services;
 using webecommerce.Common.Utils;
-using System.Collections.Generic;
-using System;
-using System.Linq;
 
 namespace webecommerce.Controllers
 {
-    [Route("api/v1/[controller]")]
     [ApiController]
-    public class UserController : BaseController
+    [Route("api/[controller]")]
+    public class UserController : ControllerBase
     {
         private readonly IUserService _userService;
-        private readonly IFirebaseImageService _firebaseImageService;
-        private readonly IImageService _imageService;
-        private readonly ICartService _cartService;
 
-        public UserController(
-            IUserService userService,
-            IFirebaseImageService firebaseImageService,
-            IImageService imageService,
-            ICartService cartService)
+        public UserController(IUserService userService)
         {
             _userService = userService;
-            _firebaseImageService = firebaseImageService;
-            _imageService = imageService;
-            _cartService = cartService;
+        }
+
+        [HttpPost("login")]
+        public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
+        {
+            try
+            {
+                var response = await _userService.LoginAsync(request);
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPost("register")]
+        public async Task<ActionResult<UserResponse>> Register([FromBody] RegisterRequest request)
+        {
+            try
+            {
+                var response = await _userService.RegisterAsync(request);
+                return CreatedAtAction(nameof(GetById), new { id = response.Id }, response);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll(
-            [FromQuery] string keySearch = "",
-            [FromQuery] int status = -1,
-            [FromQuery] int role = -1,
-            [FromQuery] int page = 0,
-            [FromQuery] int limit = 20)
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<StoreProcedureListResult<UserResponse>>> GetList(
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _userService.GetListAsync(searchKey, status, pagination);
+
+            return Ok(new StoreProcedureListResult<UserResponse>
+            {
+                Items = result.Items.Select(u => (UserResponse)u).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
+        }
+
+        [HttpGet("by-role/{role}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<StoreProcedureListResult<UserResponse>>> GetListByRole(
+            string role,
+            [FromQuery] string searchKey = "",
+            [FromQuery] int status = 1,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            var pagination = new Pagination { PageNumber = pageNumber, PageSize = pageSize };
+            var result = await _userService.GetListByRoleAsync(role, searchKey, status, pagination);
+
+            return Ok(new StoreProcedureListResult<UserResponse>
+            {
+                Items = result.Items.Select(u => (UserResponse)u).ToList(),
+                TotalRecords = result.TotalRecords,
+                StatusCode = result.StatusCode,
+                Message = result.Message
+            });
+        }
+
+        [HttpGet("{id}")]
+        [Authorize]
+        public async Task<ActionResult<UserResponse>> GetById(int id)
         {
             try
             {
-                var pagination = new Pagination(limit, page * limit);
-                var result = await _userService.GetList(keySearch, status, role, pagination);
+                // Get current user ID from claims
+                var userId = int.Parse(User.FindFirst("sub")?.Value);
 
-                var listData = new BaseListDataResponse<UserResponse>
-                {
-                    List = result.Data.Select(u => new UserResponse { User = u }).ToList(),
-                    TotalRecord = result.TotalRecord
-                };
+                // Only admin can view other users' profiles
+                if (id != userId && !User.IsInRole("Admin"))
+                    return Forbid();
 
-                return OkWithData(listData);
+                var user = await _userService.GetByIdAsync(id);
+                return Ok(user);
             }
             catch (Exception ex)
             {
-                return ServerErrorWithMessage(ex.Message);
+                return NotFound(ex.Message);
             }
         }
 
-        [HttpPut("update")]
-        public async Task<IActionResult> Update([FromBody] CRUDUserRequest request)
+        [HttpGet("profile")]
+        [Authorize]
+        public async Task<ActionResult<UserResponse>> GetProfile()
         {
             try
             {
-                var user = await GetCurrentUser();
-
-                if (user.Email != request.Email)
-                {
-                    var existingUserByEmail = await _userService.FindByEmail(request.Email, 0);
-                    if (existingUserByEmail != null)
-                        return BadRequestWithMessage("Email already exists");
-                }
-
-                if (user.Phone != request.Phone)
-                {
-                    var existingUserByPhone = await _userService.FindByPhone(request.Phone);
-                    if (existingUserByPhone != null)
-                        return BadRequestWithMessage("Phone number already exists");
-                }
-
-                user.FullName = request.FullName;
-                user.Email = request.Email;
-                user.Phone = request.Phone;
-                user.FullAddress = request.FullAddress;
-
-                await _userService.Update(user);
-                return OkWithData(new UserResponse { User = user });
+                // Get current user ID from claims
+                var userId = int.Parse(User.FindFirst("sub")?.Value);
+                var user = await _userService.GetByIdAsync(userId);
+                return Ok(user);
             }
             catch (Exception ex)
             {
-                return ServerErrorWithMessage(ex.Message);
+                return NotFound(ex.Message);
             }
         }
 
-        [HttpGet("detail")]
-        public async Task<IActionResult> GetDetail()
+        [HttpPut("profile")]
+        [Authorize]
+        public async Task<ActionResult<UserResponse>> UpdateProfile([FromBody] UpdateProfileRequest request)
         {
             try
             {
-                var user = await GetCurrentUser();
-                var pagination = new Pagination(20, 0);
-                var cartResult = await _cartService.GetList(user.Id, "", 1, pagination);
-                var cart = cartResult.Data.FirstOrDefault();
-
-                var response = new UserResponse 
-                { 
-                    User = user,
-                    CartId = cart?.Id ?? 0
-                };
-
-                return OkWithData(response);
+                // Get current user ID from claims
+                var userId = int.Parse(User.FindFirst("sub")?.Value);
+                var user = await _userService.UpdateProfileAsync(userId, request);
+                return Ok(user);
             }
             catch (Exception ex)
             {
-                return ServerErrorWithMessage(ex.Message);
+                return BadRequest(ex.Message);
             }
         }
 
-        [HttpPost("change-password")]
-        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+        [HttpPut("change-password")]
+        [Authorize]
+        public async Task<ActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
         {
             try
             {
-                var user = await GetCurrentUser();
-                var currentPassword = Utils.DecodeBase64(user.Password);
-
-                if (request.OldPassword != currentPassword)
-                    return BadRequestWithMessage("Current password is incorrect");
-
-                if (request.NewPassword != request.ConfirmPassword)
-                    return BadRequestWithMessage("New password and confirm password do not match");
-
-                user.Password = Utils.EncodeBase64(request.NewPassword);
-                await _userService.Update(user);
-
-                return OkWithData(new UserResponse { User = user });
+                // Get current user ID from claims
+                var userId = int.Parse(User.FindFirst("sub")?.Value);
+                await _userService.ChangePasswordAsync(userId, request);
+                return NoContent();
             }
             catch (Exception ex)
             {
-                return ServerErrorWithMessage(ex.Message);
+                return BadRequest(ex.Message);
             }
         }
 
-        [HttpPost("upload-avatar")]
-        public async Task<IActionResult> UploadAvatar(IFormFile file)
+        [HttpPost("forgot-password")]
+        public async Task<ActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+        {
+            var result = await _userService.ForgotPasswordAsync(request);
+            if (!result)
+                return NotFound("Email not found");
+
+            return Ok("Password reset instructions have been sent to your email");
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<ActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        {
+            var result = await _userService.ResetPasswordAsync(request);
+            if (!result)
+                return BadRequest("Invalid token or email");
+
+            return Ok("Password has been reset successfully");
+        }
+
+        [HttpPost("refresh-token")]
+        public async Task<ActionResult<RefreshTokenResponse>> RefreshToken([FromBody] RefreshTokenRequest request)
         {
             try
             {
-                var user = await GetCurrentUser();
-
-                var fileName = await _firebaseImageService.SaveAsync(file);
-                var imageUrl = await _firebaseImageService.GetImageUrlAsync(fileName);
-
-                user.AvatarUrl = imageUrl;
-                await _userService.Update(user);
-
-                return OkWithData(imageUrl);
+                var response = await _userService.RefreshTokenAsync(request);
+                return Ok(response);
             }
             catch (Exception ex)
             {
-                return ServerErrorWithMessage(ex.Message);
+                return BadRequest(ex.Message);
             }
         }
 
-        [Authorize(Roles = "ADMIN")]
-        [HttpPost("{id}/change-status")]
-        public async Task<IActionResult> ChangeStatus(int id)
+        [HttpPost("revoke-token")]
+        [Authorize]
+        public async Task<ActionResult> RevokeToken()
         {
             try
             {
-                var currentUser = await GetCurrentUser();
-                var user = await _userService.GetById(id);
-
-                if (user == null)
-                    return BadRequestWithMessage("User not found");
-
-                if (user.Id == currentUser.Id)
-                    return BadRequestWithMessage("Cannot change your own status");
-
-                user.IsActive = user.IsActive == 1 ? 0 : 1;
-                await _userService.Update(user);
-
-                return OkWithData(new UserResponse { User = user });
+                // Get current user ID from claims
+                var userId = int.Parse(User.FindFirst("sub")?.Value);
+                await _userService.RevokeTokenAsync(userId);
+                return NoContent();
             }
             catch (Exception ex)
             {
-                return ServerErrorWithMessage(ex.Message);
+                return BadRequest(ex.Message);
             }
+        }
+
+        [HttpPut("{id}/status")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> UpdateStatus(int id, [FromBody] UpdateUserStatusRequest request)
+        {
+            try
+            {
+                await _userService.UpdateStatusAsync(id, request);
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("{id}/role")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> UpdateRole(int id, [FromBody] UpdateUserRoleRequest request)
+        {
+            try
+            {
+                await _userService.UpdateRoleAsync(id, request);
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> Delete(int id)
+        {
+            var result = await _userService.DeleteAsync(id);
+            if (!result)
+                return NotFound();
+
+            return NoContent();
         }
     }
 } 

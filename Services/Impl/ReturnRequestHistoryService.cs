@@ -1,6 +1,10 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using webecommerce.Models;
 using webecommerce.Data.Repository;
+using webecommerce.Common.Utils;
 
 namespace webecommerce.Services.Impl
 {
@@ -13,39 +17,46 @@ namespace webecommerce.Services.Impl
             _returnRequestHistoryRepository = returnRequestHistoryRepository;
         }
 
-        public void Create(ReturnRequestHistory returnRequestHistory)
+        public async Task<StoreProcedureListResult<ReturnRequestHistory>> GetList(int returnRequestId, string keySearch, int status, Pagination pagination)
         {
-            _returnRequestHistoryRepository.Create(returnRequestHistory);
+            return await _returnRequestHistoryRepository.SpGListReturnRequestHistory(returnRequestId, keySearch, status, pagination);
         }
 
-        public ReturnRequestHistory FindOne(int id)
+        public async Task<ReturnRequestHistory> GetById(int id)
         {
-            return _returnRequestHistoryRepository.FindOne(id);
+            return await _returnRequestHistoryRepository.FindOne(id);
         }
 
-        public void Update(ReturnRequestHistory returnRequestHistory)
+        public async Task<ReturnRequestHistory> Create(ReturnRequestHistory returnRequestHistory)
         {
-            _returnRequestHistoryRepository.Update(returnRequestHistory);
+            await _returnRequestHistoryRepository.Create(returnRequestHistory);
+            return returnRequestHistory;
         }
 
-        public List<ReturnRequestHistory> GetAll()
+        public async Task<ReturnRequestHistory> Update(ReturnRequestHistory returnRequestHistory)
         {
-            return _returnRequestHistoryRepository.GetAll();
+            await _returnRequestHistoryRepository.Update(returnRequestHistory);
+            return returnRequestHistory;
         }
 
-        public List<ReturnRequestHistory> FindByReturnRequestId(int returnRequestId)
+        public async Task<List<ReturnRequestHistory>> GetAll()
         {
-            return _returnRequestHistoryRepository.FindByReturnRequestId(returnRequestId);
+            return await _returnRequestHistoryRepository.GetAll().ToListAsync();
         }
 
-        public List<ReturnRequestHistory> FindByStatus(int status)
+        public async Task<List<ReturnRequestHistory>> GetByStatus(int status)
         {
-            return _returnRequestHistoryRepository.FindByStatus(status);
+            return await _returnRequestHistoryRepository.FindByCondition(h => h.Status == status).ToListAsync();
         }
 
-        public List<ReturnRequestHistory> FindAllActive()
+        public async Task<List<ReturnRequestHistory>> GetByReturnRequestId(int returnRequestId)
         {
-            return _returnRequestHistoryRepository.FindAllActive();
+            return await _returnRequestHistoryRepository.FindByCondition(h => h.ReturnRequestId == returnRequestId).ToListAsync();
+        }
+
+        public async Task<List<ReturnRequestHistory>> FindAllActive()
+        {
+            return await _returnRequestHistoryRepository.FindByCondition(h => h.Status == 1).ToListAsync();
         }
     }
 } 

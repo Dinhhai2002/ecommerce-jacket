@@ -1,16 +1,21 @@
 using System.Collections.Generic;
-using webecommerce.Data;
+using System.Threading.Tasks;
+using webecommerce.Models;
+using webecommerce.Common.Utils;
 
 namespace webecommerce.Services
 {
     public interface IUserRegisterService
     {
-        void Create(UserRegister userRegister);
-        UserRegister FindOne(int id);
-        void Update(UserRegister userRegister);
-        List<UserRegister> GetAll();
-        UserRegister FindByUsernameAndEmail(string username, string email);
-        List<UserRegister> FindByStatus(int status);
-        List<UserRegister> FindAllActive();
+        Task<StoreProcedureListResult<UserRegister>> GetList(string keySearch, int status, Pagination pagination);
+        Task<UserRegister> GetById(int id);
+        Task<UserRegister> Create(UserRegister userRegister);
+        Task<UserRegister> Update(UserRegister userRegister);
+        Task<List<UserRegister>> GetAll();
+        Task<List<UserRegister>> GetByStatus(int status);
+        Task<UserRegister> GetByUsername(string username);
+        Task<UserRegister> GetByEmail(string email);
+        Task<UserRegister> GetByPhone(string phone);
+        Task<List<UserRegister>> FindAllActive();
     }
 } 
